@@ -59,8 +59,22 @@ async def init_db():
             score REAL DEFAULT 0.0,
             file_path TEXT,
             thumbnail_path TEXT,
+            template_id TEXT,
+            template_variables_json TEXT DEFAULT '{}',
             status TEXT NOT NULL DEFAULT 'pending'
                 CHECK(status IN ('pending', 'generating', 'completed', 'failed')),
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS custom_templates (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT,
+            category TEXT NOT NULL,
+            base_template_id TEXT NOT NULL,
+            variables_json TEXT DEFAULT '{}',
+            is_favorite INTEGER DEFAULT 0,
+            usage_count INTEGER DEFAULT 0,
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
 

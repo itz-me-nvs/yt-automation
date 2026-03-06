@@ -22,7 +22,7 @@ from fastapi.staticfiles import StaticFiles
 import os
 
 from .database import init_db
-from .routers import videos, analysis, channel
+from .routers import videos, analysis, channel, templates
 
 logging.basicConfig(
     level=logging.INFO,
@@ -111,6 +111,7 @@ app.mount("/static/uploads", StaticFiles(directory=uploads_dir), name="uploads")
 app.include_router(videos.router)
 app.include_router(analysis.router)
 app.include_router(channel.router)
+app.include_router(templates.router)
 
 
 @app.get("/api/health")

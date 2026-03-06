@@ -88,8 +88,43 @@ class ShortResponse(BaseModel):
     score: float
     file_path: Optional[str]
     thumbnail_path: Optional[str]
+    template_id: Optional[str] = None
+    template_variables: Optional[dict] = None
     status: str
     created_at: str
+
+
+class TemplateResponse(BaseModel):
+    id: str
+    name: str
+    description: str
+    category: str
+    preview_color: str
+    variables: list[str]
+    tags: list[str]
+
+
+class TemplateSuggestion(BaseModel):
+    template_id: str
+    main_text: str
+    sub_text: str
+    confidence: float
+
+
+class RegenerateShortRequest(BaseModel):
+    video_id: str
+    highlight_index: int
+    template_id: str
+    main_text: str
+    sub_text: str = ""
+
+
+class CustomTemplateCreate(BaseModel):
+    name: str
+    description: Optional[str] = ""
+    category: str
+    base_template_id: str
+    variables: dict[str, str]
 
 
 class ChannelInfoResponse(BaseModel):

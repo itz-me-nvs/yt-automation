@@ -128,6 +128,8 @@ async def get_analysis_results(video_id: str):
             score=row["score"] or 0,
             file_path=row["file_path"],
             thumbnail_path=row["thumbnail_path"],
+            template_id=row["template_id"],
+            template_variables=json.loads(row["template_variables_json"] or "{}"),
             status=row["status"],
             created_at=row["created_at"],
         ))
@@ -229,8 +231,9 @@ async def _run_analysis_background(video_id: str, video_path: str):
                     """INSERT INTO shorts
                        (id, video_id, analysis_id, title, description,
                         start_time, end_time, duration, category, score,
-                        file_path, thumbnail_path, status)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed')""",
+                        file_path, thumbnail_path, template_id,
+                        template_variables_json, status)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed')""",
                     (
                         short_data["short_id"],
                         video_id,
@@ -244,6 +247,8 @@ async def _run_analysis_background(video_id: str, video_path: str):
                         highlight.get("score", 0),
                         short_data.get("file_path", ""),
                         short_data.get("thumbnail_path"),
+                        short_data.get("template_id"),
+                        json.dumps(short_data.get("template_variables", {})),
                     ),
                 )
 

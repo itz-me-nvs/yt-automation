@@ -96,6 +96,15 @@ def _build_analysis_prompt(
 
     return f"""Analyze this video transcript (duration: {_format_time(duration)}) and identify the best moments for YouTube Shorts (15-60 seconds each).
 
+This is likely a FOOTBALL/SOCCER video. Pay special attention to:
+- Goal moments (celebrations, commentary excitement)
+- Skill moves, dribbles, tricks, nutmegs
+- Player highlights (Ronaldo, Messi, Neymar, etc.)
+- Emotional reactions (crowd, players, managers)
+- Dramatic moments (last-minute goals, red cards, penalties)
+- Funny/entertaining moments
+- Match turning points
+
 TRANSCRIPT WITH TIMESTAMPS:
 {timestamped_text}
 
@@ -105,11 +114,13 @@ Return a JSON object with this exact structure:
     {{
       "start_time": <seconds>,
       "end_time": <seconds>,
-      "category": "<funny|emotional|exciting|informative|music|dramatic>",
+      "category": "<goal|skill|funny|emotional|exciting|informative|music|dramatic>",
       "title": "<short catchy title>",
       "description": "<why this is a good short>",
       "score": <0.0-1.0 indicating how good this highlight is>,
-      "reasons": ["<reason1>", "<reason2>"]
+      "reasons": ["<reason1>", "<reason2>"],
+      "overlay_text": "<2-4 word punchy text for video overlay, e.g. 'Ronaldo Aura', 'GOAAAL!', 'Prime Messi'>",
+      "overlay_subtext": "<short supporting text, e.g. 'Different breed', 'What a strike!'>"
     }}
   ],
   "emotions": [
@@ -124,17 +135,20 @@ Return a JSON object with this exact structure:
   "categories": {{
     "primary": "<main category of the video>",
     "tags": ["<tag1>", "<tag2>", ...],
-    "content_type": "<entertainment|education|sports|music|gaming|vlog|news>"
+    "content_type": "<entertainment|education|sports|music|gaming|vlog|news>",
+    "players_mentioned": ["<player names found in transcript>"],
+    "teams_mentioned": ["<team names found in transcript>"]
   }},
   "summary": "<2-3 sentence summary of the video>"
 }}
 
 Find at least 3-5 highlights. Prioritize:
-1. Funny/entertaining moments
-2. Emotional peaks (sad, happy, surprising)
-3. Action/exciting moments (goals, reactions, drops)
-4. Quotable/shareable moments
-5. Music highlights or beats"""
+1. Goal moments and celebrations
+2. Amazing skills, dribbles, and tricks
+3. Emotional peaks (dramatic reactions, crowd moments)
+4. Funny/entertaining moments
+5. Player "aura" moments (dominance, confidence, flair)
+6. Action/exciting moments (saves, tackles, counter-attacks)"""
 
 
 def _parse_llm_response(response_text: str, segments: list[dict]) -> dict:
@@ -165,6 +179,8 @@ def _parse_llm_response(response_text: str, segments: list[dict]) -> dict:
             "description": h.get("description", ""),
             "score": min(1.0, max(0.0, float(h.get("score", 0.5)))),
             "reasons": h.get("reasons", []),
+            "overlay_text": h.get("overlay_text", ""),
+            "overlay_subtext": h.get("overlay_subtext", ""),
         })
 
     emotions = []
@@ -194,22 +210,38 @@ def _rule_based_analysis(
     """
     logger.info("Running rule-based content analysis")
 
-    # Emotion/highlight keywords
+    # Football/sports-focused keyword sets
+    goal_words = {
+        "goal", "score", "scored", "finish", "strike", "volley", "header",
+        "penalty", "free kick", "freekick", "net", "keeper", "saved",
+    }
     excitement_words = {
         "goal", "score", "win", "amazing", "incredible", "wow", "unbelievable",
         "fantastic", "brilliant", "perfect", "yes", "champion", "victory",
+        "worldie", "banger", "screamer", "rocket", "thunderbolt",
+    }
+    skill_words = {
+        "skill", "dribble", "trick", "nutmeg", "rainbow", "flick", "tekkers",
+        "touch", "control", "pass", "assist", "through", "chip", "lob",
     }
     funny_words = {
         "haha", "lol", "funny", "laugh", "hilarious", "joke", "comedy",
-        "ridiculous", "silly", "crazy", "lmao", "rofl",
+        "ridiculous", "silly", "crazy", "lmao", "rofl", "dive", "flop",
     }
     emotional_words = {
         "love", "cry", "tears", "beautiful", "heart", "miss", "remember",
         "goodbye", "sorry", "hope", "dream", "believe", "forever",
+        "legend", "retire", "farewell", "tribute", "respect",
     }
     dramatic_words = {
         "no", "stop", "wait", "what", "oh", "omg", "shocked", "breaking",
-        "urgent", "just", "finally", "never", "always",
+        "urgent", "just", "finally", "never", "always", "red card",
+        "offside", "var", "injury", "foul", "last minute",
+    }
+    player_names = {
+        "ronaldo", "messi", "neymar", "mbappe", "haaland", "salah",
+        "vinicius", "bellingham", "modric", "kroos", "benzema",
+        "lewandowski", "de bruyne", "palmer", "saka", "foden",
     }
 
     highlights = []
@@ -220,32 +252,58 @@ def _rule_based_analysis(
         words = set(text_lower.split())
 
         # Check each category
+        goal_score = len(words & goal_words) / max(len(words), 1)
         excitement_score = len(words & excitement_words) / max(len(words), 1)
+        skill_score = len(words & skill_words) / max(len(words), 1)
         funny_score = len(words & funny_words) / max(len(words), 1)
         emotional_score = len(words & emotional_words) / max(len(words), 1)
         dramatic_score = len(words & dramatic_words) / max(len(words), 1)
 
-        max_score = max(excitement_score, funny_score, emotional_score, dramatic_score)
+        # Detect player names for overlay text
+        detected_players = words & player_names
+        player_name = detected_players.pop().title() if detected_players else ""
+
+        all_scores = {
+            "goal": goal_score,
+            "exciting": excitement_score,
+            "skill": skill_score,
+            "funny": funny_score,
+            "emotional": emotional_score,
+            "dramatic": dramatic_score,
+        }
+        max_category = max(all_scores, key=all_scores.get)
+        max_score = all_scores[max_category]
 
         if max_score > 0.05:
-            if excitement_score == max_score:
-                category, emotion = "exciting", "excited"
-            elif funny_score == max_score:
-                category, emotion = "funny", "happy"
-            elif emotional_score == max_score:
-                category, emotion = "emotional", "sad"
-            else:
-                category, emotion = "dramatic", "surprised"
+            category = max_category
+            emotion_map = {
+                "goal": "excited", "exciting": "excited", "skill": "excited",
+                "funny": "happy", "emotional": "sad", "dramatic": "surprised",
+            }
+            emotion = emotion_map.get(category, "neutral")
+
+            # Generate overlay text based on category
+            overlay_map = {
+                "goal": ("GOAAAL!", player_name or "What a finish!"),
+                "exciting": ("INCREDIBLE!", player_name or "Unbelievable moment"),
+                "skill": (f"{player_name} Aura" if player_name else "TEKKERS!", "Different breed"),
+                "funny": ("NO WAY!", "You can't be serious"),
+                "emotional": (f"Legend {player_name}" if player_name else "Beautiful Game", "Football is life"),
+                "dramatic": ("DRAMA!", player_name or "What just happened?!"),
+            }
+            overlay_text, overlay_subtext = overlay_map.get(category, ("Watch This", ""))
 
             highlights.append({
                 "start_time": seg["start"],
                 "end_time": seg["end"],
                 "duration": seg["end"] - seg["start"],
                 "category": category,
-                "title": f"{category.title()} Moment",
+                "title": f"{category.title()} Moment" + (f" - {player_name}" if player_name else ""),
                 "description": seg["text"][:100],
                 "score": min(1.0, max_score * 5),
-                "reasons": [f"Contains {category} keywords"],
+                "reasons": [f"Contains {category} keywords"] + ([f"Player: {player_name}"] if player_name else []),
+                "overlay_text": overlay_text,
+                "overlay_subtext": overlay_subtext,
             })
 
             emotions.append({
@@ -296,14 +354,14 @@ async def analyze_frames_with_clip(frame_paths: list[str]) -> list[dict]:
         List of dicts with frame classifications
     """
     categories = [
-        "a sports highlight or goal",
+        "a football goal or celebration",
+        "a football skill move or dribble",
+        "a football tackle or defensive play",
+        "a sports highlight or exciting moment",
         "a funny or comedic moment",
         "an emotional or dramatic scene",
-        "a music performance or concert",
-        "a beautiful landscape or scenery",
-        "a person talking to camera",
-        "an action or exciting scene",
-        "a calm or peaceful moment",
+        "a person talking to camera or interview",
+        "a crowd or stadium reaction",
     ]
 
     try:

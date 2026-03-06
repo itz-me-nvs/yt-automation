@@ -8,6 +8,7 @@ import {
   Video,
   User,
   Zap,
+  Palette,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -15,6 +16,7 @@ const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/upload", label: "Upload / Add Video", icon: Upload },
   { href: "/videos", label: "My Videos", icon: Video },
+  { href: "/templates", label: "Overlay Templates", icon: Palette },
   { href: "/account", label: "Account", icon: User },
 ];
 

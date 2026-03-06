@@ -96,6 +96,8 @@ export interface Highlight {
   score: number;
   reasons: string[];
   source?: string;
+  overlay_text?: string;
+  overlay_subtext?: string;
 }
 
 export interface EmotionSegment {
@@ -141,7 +143,40 @@ export interface Short {
   score: number;
   file_path: string | null;
   thumbnail_path: string | null;
+  template_id: string | null;
+  template_variables: Record<string, string> | null;
   status: string;
+  created_at: string;
+}
+
+// ── Templates ──────────────────────────────────────────────────────
+
+export interface Template {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  preview_color: string;
+  variables: string[];
+  tags: string[];
+}
+
+export interface TemplateSuggestion {
+  template_id: string;
+  main_text: string;
+  sub_text: string;
+  confidence: number;
+}
+
+export interface CustomTemplate {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  base_template_id: string;
+  variables: Record<string, string>;
+  is_favorite: boolean;
+  usage_count: number;
   created_at: string;
 }
 
@@ -224,6 +259,55 @@ export async function updateChannelInfo(data: {
 
 export async function getChannelStats(): Promise<ChannelStats> {
   return request<ChannelStats>("/channel/stats");
+}
+
+// ── Templates ──────────────────────────────────────────────────────
+
+export async function listTemplates(): Promise<Template[]> {
+  return request<Template[]>("/templates/");
+}
+
+export async function getTemplateSuggestions(
+  videoId: string,
+  highlightIndex: number = 0,
+): Promise<TemplateSuggestion[]> {
+  return request<TemplateSuggestion[]>(
+    `/templates/suggest/${videoId}?highlight_index=${highlightIndex}`
+  );
+}
+
+export async function regenerateShort(data: {
+  video_id: string;
+  highlight_index: number;
+  template_id: string;
+  main_text: string;
+  sub_text?: string;
+}): Promise<Short> {
+  return request<Short>("/templates/regenerate", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function listCustomTemplates(): Promise<CustomTemplate[]> {
+  return request<CustomTemplate[]>("/templates/custom/list");
+}
+
+export async function saveCustomTemplate(data: {
+  name: string;
+  description?: string;
+  category: string;
+  base_template_id: string;
+  variables: Record<string, string>;
+}): Promise<{ id: string; message: string }> {
+  return request("/templates/custom", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteCustomTemplate(id: string): Promise<void> {
+  await request(`/templates/custom/${id}`, { method: "DELETE" });
 }
 
 // ── Health ──────────────────────────────────────────────────────────

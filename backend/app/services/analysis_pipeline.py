@@ -150,21 +150,24 @@ async def run_analysis_pipeline(
         await report("scoring", 1.0,
                       f"Final scoring complete. {len(results['highlights'])} highlights ranked")
 
-        # ── Stage 7: Generate Shorts ────────────────────────────────────
+        # ── Stage 7: Generate Shorts with Templates ─────────────────────
         if results["highlights"]:
             await report("generation", 0.0,
-                          f"Generating shorts from top {min(5, len(results['highlights']))} highlights...")
+                          f"Generating templated shorts from top {min(5, len(results['highlights']))} highlights...")
 
             shorts = batch_generate_shorts(
                 video_path=video_path,
                 highlights=results["highlights"],
                 max_shorts=5,
+                auto_template=True,
+                categories=results.get("categories", {}),
             )
             results["shorts"] = shorts
 
             completed = sum(1 for s in shorts if s.get("status") == "completed")
+            templated = sum(1 for s in shorts if s.get("template_id"))
             await report("generation", 1.0,
-                          f"Generated {completed}/{len(shorts)} shorts successfully")
+                          f"Generated {completed}/{len(shorts)} shorts ({templated} with templates)")
         else:
             await report("generation", 1.0, "No highlights found, skipping short generation")
 

@@ -16,17 +16,25 @@ import {
   Star,
   AlertCircle,
   RefreshCw,
+  Palette,
+  Sparkles,
+  RotateCw,
 } from "lucide-react";
 import {
   getVideo,
   startAnalysis,
   getAnalysisProgress,
   getAnalysisResults,
+  getTemplateSuggestions,
+  listTemplates,
+  regenerateShort,
   type Video,
   type AnalysisResult,
   type AnalysisProgress,
   type Short,
   type Highlight,
+  type Template,
+  type TemplateSuggestion,
 } from "@/lib/api";
 import {
   formatDuration,
@@ -283,7 +291,7 @@ export default function VideoDetailPage({ params }: { params: Promise<{ id: stri
           {activeTab === "transcript" && <TranscriptTab transcript={analysis.transcript} />}
           {activeTab === "emotions" && <EmotionsTab emotions={analysis.emotions} />}
           {activeTab === "energy" && <EnergyTab energy={analysis.audio_energy} />}
-          {activeTab === "shorts" && <ShortsTab shorts={shorts} />}
+          {activeTab === "shorts" && <ShortsTab shorts={shorts} videoId={id} />}
         </>
       )}
 
@@ -566,8 +574,44 @@ function EnergyTab({ energy }: { energy: AnalysisResult["audio_energy"] }) {
   );
 }
 
-function ShortsTab({ shorts }: { shorts: Short[] }) {
-  if (shorts.length === 0) {
+function ShortsTab({ shorts, videoId }: { shorts: Short[]; videoId: string }) {
+  const [regenerating, setRegenerating] = useState<string | null>(null);
+  const [allShorts, setAllShorts] = useState(shorts);
+  const [editingShort, setEditingShort] = useState<string | null>(null);
+  const [editTemplate, setEditTemplate] = useState("");
+  const [editMainText, setEditMainText] = useState("");
+  const [editSubText, setEditSubText] = useState("");
+  const [templates, setTemplates] = useState<Template[]>([]);
+
+  useEffect(() => {
+    listTemplates().then(setTemplates).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    setAllShorts(shorts);
+  }, [shorts]);
+
+  const handleRegenerate = async (short: Short, index: number) => {
+    if (!editTemplate) return;
+    setRegenerating(short.id);
+    try {
+      const newShort = await regenerateShort({
+        video_id: videoId,
+        highlight_index: index,
+        template_id: editTemplate,
+        main_text: editMainText || "Watch This",
+        sub_text: editSubText,
+      });
+      setAllShorts((prev) => [...prev, newShort]);
+      setEditingShort(null);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Regeneration failed");
+    } finally {
+      setRegenerating(null);
+    }
+  };
+
+  if (allShorts.length === 0) {
     return (
       <div className="py-12 text-center text-sm text-gray-500">
         No shorts generated yet
@@ -577,17 +621,40 @@ function ShortsTab({ shorts }: { shorts: Short[] }) {
 
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-      {shorts.map((short) => (
+      {allShorts.map((short, i) => (
         <div
           key={short.id}
           className="overflow-hidden rounded-xl border border-gray-200 bg-white"
         >
-          <div className="flex aspect-[9/16] max-h-64 items-center justify-center bg-gray-100">
-            <Scissors className="h-10 w-10 text-gray-300" />
+          {/* Preview area */}
+          <div className="relative flex aspect-[9/16] max-h-64 items-center justify-center bg-gradient-to-b from-gray-800 to-gray-900">
+            <Scissors className="h-10 w-10 text-gray-600" />
+            {/* Template overlay preview */}
+            {short.template_id && short.template_variables && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center p-4">
+                <p className="text-center text-lg font-bold text-white drop-shadow-lg">
+                  {short.template_variables.main_text}
+                </p>
+                {short.template_variables.sub_text && (
+                  <p className="mt-1 text-center text-xs text-white/80 drop-shadow">
+                    {short.template_variables.sub_text}
+                  </p>
+                )}
+              </div>
+            )}
+            {/* Template badge */}
+            {short.template_id && (
+              <div className="absolute top-2 right-2 flex items-center gap-1 rounded-full bg-black/60 px-2 py-0.5">
+                <Palette className="h-3 w-3 text-purple-400" />
+                <span className="text-[10px] text-white">{short.template_id}</span>
+              </div>
+            )}
           </div>
+
           <div className="p-4">
             <h4 className="text-sm font-semibold text-gray-900">{short.title}</h4>
             <p className="mt-1 line-clamp-2 text-xs text-gray-500">{short.description}</p>
+
             <div className="mt-3 flex items-center justify-between text-xs text-gray-500">
               <span>{formatDuration(short.duration)}</span>
               {short.category && (
@@ -599,6 +666,69 @@ function ShortsTab({ shorts }: { shorts: Short[] }) {
                 {(short.score * 100).toFixed(0)}%
               </span>
             </div>
+
+            {/* Regenerate with different template */}
+            {editingShort === short.id ? (
+              <div className="mt-3 space-y-2 border-t border-gray-100 pt-3">
+                <select
+                  value={editTemplate}
+                  onChange={(e) => setEditTemplate(e.target.value)}
+                  className="w-full rounded border border-gray-300 px-2 py-1.5 text-xs focus:border-red-500 focus:outline-none"
+                >
+                  <option value="">Select template...</option>
+                  {templates.map((t) => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
+                <input
+                  type="text"
+                  value={editMainText}
+                  onChange={(e) => setEditMainText(e.target.value)}
+                  placeholder="Main text (e.g. Ronaldo Aura)"
+                  className="w-full rounded border border-gray-300 px-2 py-1.5 text-xs focus:border-red-500 focus:outline-none"
+                />
+                <input
+                  type="text"
+                  value={editSubText}
+                  onChange={(e) => setEditSubText(e.target.value)}
+                  placeholder="Sub text (optional)"
+                  className="w-full rounded border border-gray-300 px-2 py-1.5 text-xs focus:border-red-500 focus:outline-none"
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleRegenerate(short, i)}
+                    disabled={!editTemplate || regenerating === short.id}
+                    className="flex flex-1 items-center justify-center gap-1 rounded bg-red-600 px-2 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                  >
+                    {regenerating === short.id ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <Sparkles className="h-3 w-3" />
+                    )}
+                    Generate
+                  </button>
+                  <button
+                    onClick={() => setEditingShort(null)}
+                    className="rounded border border-gray-300 px-2 py-1.5 text-xs text-gray-600 hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={() => {
+                  setEditingShort(short.id);
+                  setEditTemplate(short.template_id || "");
+                  setEditMainText(short.template_variables?.main_text || "");
+                  setEditSubText(short.template_variables?.sub_text || "");
+                }}
+                className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg border border-gray-200 py-1.5 text-xs text-gray-600 hover:bg-gray-50"
+              >
+                <RotateCw className="h-3 w-3" />
+                Change Template
+              </button>
+            )}
           </div>
         </div>
       ))}
